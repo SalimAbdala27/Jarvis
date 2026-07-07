@@ -8,6 +8,10 @@ class UnknownTokenError(Exception):
     pass
 
 
+BINARY_SAMPLE_SIZE = 8192
+BINARY_REPLACEMENT_RATIO_THRESHOLD = 0.01
+
+
 class FileTools:
     def __init__(self, workspace):
         self.workspace = workspace
@@ -48,10 +52,26 @@ class FileTools:
         self._ensure_within_bounds(target)
         if not target.is_file():
             return ToolResult(name="read_file", ok=False, content="Not a file: {}".format(path))
+        if self._looks_binary(target):
+            return ToolResult(
+                name="read_file", ok=False, content="Binary file, cannot display as text: {}".format(path)
+            )
         content = target.read_text(encoding="utf-8", errors="replace")
         if len(content) > max_chars:
             content = content[:max_chars] + "\n[truncated]"
         return ToolResult(name="read_file", ok=True, content=content)
+
+    @staticmethod
+    def _looks_binary(target):
+        with target.open("rb") as fh:
+            sample = fh.read(BINARY_SAMPLE_SIZE)
+        if b"\x00" in sample:
+            return True
+        if not sample:
+            return False
+        decoded = sample.decode("utf-8", errors="replace")
+        replacement_ratio = decoded.count("�") / len(decoded)
+        return replacement_ratio > BINARY_REPLACEMENT_RATIO_THRESHOLD
 
     def write_file(self, path, content, overwrite=False):
         target = self._resolve(path)
