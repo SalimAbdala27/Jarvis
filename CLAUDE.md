@@ -38,6 +38,8 @@ Manual API exercise:
 curl -s http://127.0.0.1:8765/api/chat -H 'content-type: application/json' \
   -d '{"message":"List the files in my workspace."}'
 curl -s http://127.0.0.1:8765/api/tools
+curl -s http://127.0.0.1:8765/api/confirm -H 'content-type: application/json' \
+  -d '{"token":"<token from a queued write_file/delete_file result>","decision":"confirm"}'
 ```
 
 Requires a local Ollama server with the configured model pulled (default `qwen2.5-coder:1.5b`, see `JARVIS_MODEL`):
@@ -56,7 +58,7 @@ ollama pull qwen2.5-coder:1.5b
 **Tool registry pattern** (`jarvis/tools/registry.py` + `jarvis/tools/*.py`): each tool module (`files.py`, `terminal.py`, `browser.py`) defines a class holding the actual logic and a `register_*_tool(registry, instance)` function that registers the OpenAI/Ollama-style function schema plus a bound handler. `ToolRegistry.call()` catches all handler exceptions and turns them into a failed `ToolResult` rather than raising — tool code can validate by raising, and it becomes a graceful failure back to the model. All results flow through the `ToolResult`/`ChatResponse` dataclasses in `jarvis/schemas.py`.
 
 **Safety boundaries are enforced in the tool layer, not the LLM prompt:**
-- `FileTools._resolve` (`jarvis/tools/files.py`) resolves every path against `JARVIS_WORKSPACE` and raises if it escapes that directory.
+- `FileTools` (`jarvis/tools/files.py`) has two boundaries: the workspace (`JARVIS_WORKSPACE`) and the user's home directory. `list_files`/`read_file` allow anything under either boundary; a path outside home raises. `write_file`/`delete_file` execute immediately only inside the workspace — outside it (but still under home) they're queued instead of run, returning a `ToolResult` with `requires_confirmation=True` and a `confirmation_token`. `delete_file` only removes single files, never directories. Pending actions live in an in-memory dict on the `FileTools` instance (`_pending`, keyed by token; lost on restart) until resolved via `confirm()`/`discard()`. Those two methods are deliberately *not* registered as LLM-callable tools — the model can queue a risky write/delete but cannot approve its own request, so `POST /api/confirm` (`main.py`) is the only way to act on one: body `{"token": "...", "decision": "confirm"|"discard"}`, 404 on an unknown/already-resolved token, 400 on bad input. The overwrite-exists check runs both when a write is queued and again when it's confirmed, since the filesystem can change in between.
 - `TerminalTool` (`jarvis/tools/terminal.py`) runs commands via `shlex.split` + `subprocess.run` (no shell), rejects shell metacharacters (`;`, `&&`, `|`, redirects, `` ` ``, `$(`), and blocks a fixed set of destructive commands/subcommands (`rm`, `mv`, `chmod`, `sudo`, `git reset`, `git checkout`, etc.) and always runs cwd'd inside the workspace.
 - `BrowserTool` (`jarvis/tools/browser.py`) drives a persistent local Playwright Chromium context (profile dir configurable; defaults to `./browser-profile`), lazily started on first use, closed on server shutdown (`SIGINT`/`SIGTERM` in `main.py`).
 
