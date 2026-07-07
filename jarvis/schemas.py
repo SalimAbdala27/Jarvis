@@ -18,6 +18,8 @@ class ToolResult:
     name: str
     ok: bool
     content: str
+    requires_confirmation: bool = False
+    confirmation_token: str = None
 
 
 @dataclass

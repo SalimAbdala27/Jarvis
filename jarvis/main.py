@@ -11,9 +11,8 @@ from jarvis.config import get_settings
 from jarvis.llm import OllamaClient
 from jarvis.tools import BrowserTool, FileTools, TerminalTool, ToolRegistry
 from jarvis.tools.browser import register_browser_tool
-from jarvis.tools.files import register_file_tools
+from jarvis.tools.files import UnknownTokenError, register_file_tools
 from jarvis.tools.terminal import register_terminal_tool
-
 
 ROOT = Path(__file__).parent
 STATIC = ROOT / "static"
@@ -56,10 +55,15 @@ class JarvisHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path != "/api/chat":
-            self._send_json({"error": "Not found"}, status=404)
+        if parsed.path == "/api/chat":
+            self._handle_chat()
             return
+        if parsed.path == "/api/confirm":
+            self._handle_confirm()
+            return
+        self._send_json({"error": "Not found"}, status=404)
 
+    def _handle_chat(self):
         try:
             payload = self._read_json()
             message = str(payload.get("message", "")).strip()
@@ -69,6 +73,24 @@ class JarvisHandler(BaseHTTPRequestHandler):
                 return
             response = agent.chat(session_id=session_id, message=message)
             self._send_json(response.to_dict())
+        except Exception as exc:
+            self._send_json({"error": "{}: {}".format(type(exc).__name__, exc)}, status=500)
+
+    def _handle_confirm(self):
+        try:
+            payload = self._read_json()
+            token = str(payload.get("token", "")).strip()
+            decision = str(payload.get("decision", "")).strip()
+            if not token:
+                self._send_json({"error": "token is required"}, status=400)
+                return
+            if decision not in ("confirm", "discard"):
+                self._send_json({"error": "decision must be 'confirm' or 'discard'"}, status=400)
+                return
+            result = file_tools.confirm(token) if decision == "confirm" else file_tools.discard(token)
+            self._send_json(result.__dict__)
+        except UnknownTokenError as exc:
+            self._send_json({"error": str(exc)}, status=404)
         except Exception as exc:
             self._send_json({"error": "{}: {}".format(type(exc).__name__, exc)}, status=500)
 
