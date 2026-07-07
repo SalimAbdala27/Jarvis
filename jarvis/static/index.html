@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Jarvis</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Jarvis</h1>
+          <p>Local text brain: files, terminal, browser.</p>
+        </div>
+        <span class="status" id="status">Local</span>
+      </header>
+
+      <section class="chat" id="chat" aria-live="polite"></section>
+
+      <form class="composer" id="composer">
+        <textarea id="message" rows="3" placeholder="Ask Jarvis..." autofocus></textarea>
+        <button type="submit">Send</button>
+      </form>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

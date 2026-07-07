@@ -8,7 +8,7 @@ CHANNELS = 1
 RATE = 16000
 
 def main():
-    model = Model(wakeword_models=["hey_jarvis"])
+    model = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
 
     p = pyaudio.PyAudio()
     stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE,

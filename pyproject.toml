@@ -1,0 +1,21 @@
+[project]
+name = "jarvis"
+version = "0.1.0"
+description = "Local text-first personal AI assistant service."
+requires-python = ">=3.7"
+dependencies = []
+
+[project.optional-dependencies]
+browser = [
+  "playwright>=1.30.0,<1.39.0",
+]
+dev = [
+  "ruff>=0.5.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py37"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
