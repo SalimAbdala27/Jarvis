@@ -25,7 +25,12 @@ File tools:
 If a tool call fails, try at most one reasonable alternative. If that also fails, stop and
 report the failure clearly to the user with what you tried, instead of retrying repeatedly
 or calling unrelated tools.
+
+Once a tool call succeeds and its result already answers the request, respond with a final
+text summary for the user instead of calling the same tool again.
 """
+
+DEDUP_TOOLS = {"list_files", "read_file", "write_file", "delete_file"}
 
 
 class JarvisAgent:
@@ -39,6 +44,9 @@ class JarvisAgent:
         history = self.sessions.setdefault(session_id, [{"role": "system", "content": SYSTEM_PROMPT}])
         history.append({"role": "user", "content": message})
         tool_results = []
+        last_key = None
+        last_result = None
+        repeat_count = 0
 
         for _ in range(self.settings.max_tool_calls):
             response = self.llm.chat(history, self.tools.schemas)
@@ -64,7 +72,38 @@ class JarvisAgent:
                 raw_arguments = function.get("arguments") or {}
                 arguments = self._coerce_arguments(raw_arguments)
                 arguments = {key: value for key, value in arguments.items() if value is not None}
+
+                key = (name, json.dumps(arguments, sort_keys=True))
+                if key == last_key:
+                    repeat_count += 1
+                else:
+                    last_key = key
+                    repeat_count = 1
+
+                if name in DEDUP_TOOLS and repeat_count == 2:
+                    tool_results.append(last_result)
+                    history.append(
+                        {
+                            "role": "tool",
+                            "name": last_result.name,
+                            "content": (
+                                "(repeat call, no new information) {}\n\n"
+                                "You already have this result from your previous identical "
+                                "call. Respond to the user now instead of calling this again."
+                            ).format(last_result.content),
+                        }
+                    )
+                    continue
+
+                if name in DEDUP_TOOLS and repeat_count >= 3:
+                    summary = "\n\n".join(
+                        "{} {}:\n{}".format("OK" if r.ok else "FAILED", r.name, r.content)
+                        for r in tool_results
+                    )
+                    return ChatResponse(session_id=session_id, answer=summary, tool_results=tool_results)
+
                 result = self.tools.call(name, arguments)
+                last_result = result
                 tool_results.append(result)
                 history.append(
                     {
