@@ -1,3 +1,5 @@
+import asyncio
+
 from jarvis.schemas import ToolResult
 
 
@@ -13,6 +15,13 @@ class BrowserTool:
     def start(self):
         if self._page is not None:
             return
+        try:
+            asyncio.get_event_loop()
+        except RuntimeError:
+            # Playwright's driver setup touches asyncio.get_event_loop() on import;
+            # ThreadingHTTPServer runs each request on a fresh non-main thread that
+            # has no event loop set, which would otherwise raise here.
+            asyncio.set_event_loop(asyncio.new_event_loop())
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:
